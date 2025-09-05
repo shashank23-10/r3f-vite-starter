@@ -7,6 +7,7 @@ import { Avatar } from "./components/Avatar";
 import { useState } from "react";
 import { Chat } from "./components/Chat";
 import { VoiceChat } from "./components/VoiceChat";
+import MiniMap from "./components/MiniMap";
 import { useAtom } from "jotai";
 
 function App() {
@@ -37,7 +38,14 @@ function App() {
         <VoiceChat
             userId={user}
             peers={characters.map((c) => c.id)}
-          />
+        />
+        <MiniMap
+          src="/assets/map_wireframe.png"
+          markers={[
+            { x: 50, y: 50, label: "You", color: "#2563eb" },
+            { x: 20, y: 30, label: "Peer A", color: "#10b981" },
+          ]}
+        />
         </>
       )}      
     </>
