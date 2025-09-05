@@ -8,14 +8,14 @@ Command: npx gltfjsx@6.5.3 public/models/BusinessMan.glb -o src/components/Busin
 import { useAnimations, useGLTF, Billboard, Text } from "@react-three/drei";
 import { useFrame, useGraph } from "@react-three/fiber";
 import { useAtom } from "jotai";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { SkeletonUtils } from 'three-stdlib'
 import { charactersAtom, userAtom } from "./SocketManager";
 
 const MOVEMENT_SPEED = 0.032;
 
 
-export function BusinessMan({
+export const BusinessMan = forwardRef(function BusinessMan({
   hairColor = "green",
   topColor ="pink",
   bottomColor = "brown",
@@ -23,10 +23,11 @@ export function BusinessMan({
   username = "Player",   // ✅ new prop for label
   isLocal = false,
   ...props
-}) {
+}, ref) {
   const position = useMemo(() => props.position, []);
 
   const group = React.useRef()
+  useImperativeHandle(ref, () => group.current, []);
   const { scene, animations, materials } = useGLTF('/models/BusinessMan.glb')
   const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene])
   const { nodes } = useGraph(clone)
@@ -41,6 +42,7 @@ export function BusinessMan({
   
   
     useFrame((state) => {
+        if (isLocal) return;
         if (group.current.position.distanceTo(props.position) > 0.1) {
           const direction = group.current.position
             .clone()
@@ -102,6 +104,6 @@ export function BusinessMan({
             </Billboard>
     </group>
   )
-}
+});
 
 useGLTF.preload('/models/BusinessMan.glb')

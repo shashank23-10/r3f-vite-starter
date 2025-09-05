@@ -6,7 +6,7 @@ import {
   useGLTF,
 } from "@react-three/drei";
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useMemo } from "react";
 
 import { useAtom } from "jotai";
@@ -30,6 +30,13 @@ export const Experience = () => {
   const worldRef = useRef(null);
   const controlsRef = useRef(null);
   const targetVec = useMemo(() => new THREE.Vector3(0, 1.6, 0), []);
+  const localRef = useRef(null);
+  const { camera } = useThree();
+  const tmp = useMemo(() => ({
+    pos: new THREE.Vector3(),
+    dir: new THREE.Vector3(),
+    up:  new THREE.Vector3(0, 1, 0)
+  }), []);
 
   // --- color guard: fixes invalid hex like "#1a191" ---
   const fixColor = (c) => {
@@ -62,9 +69,37 @@ export const Experience = () => {
     if (worldRef.current) {
       worldRef.current.position.set(-px, -py, -pz);
     }
-    if (controlsRef.current) {
-      controlsRef.current.target.lerp(targetVec, 0.2);
-      controlsRef.current.update();
+    // --- TPP follow camera (spring arm behind local player) ---
+    if (localRef.current) {
+      const g = localRef.current;
+      // local player world position (player is at origin, but keep generic)
+      g.getWorldPosition(tmp.pos);
+      // forward direction the player is facing
+      g.getWorldDirection(tmp.dir); // points forward
+
+      // desired camera offset: 5m behind, 2m above head (~1.6m eye)
+      const desired = tmp.pos
+        .clone()
+        .add(tmp.dir.clone().multiplyScalar(-5)) // behind
+        .add(tmp.up.clone().multiplyScalar(2.2)); // height
+
+      // smooth follow
+      camera.position.lerp(desired, 0.12);
+
+      // keep controls focused on the player for orbit
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(
+          tmp.pos.clone().add(new THREE.Vector3(0, 1.6, 0)),
+          0.2
+        );
+        controlsRef.current.update();
+      }
+    } else {
+      // fallback to default target if localRef not ready yet
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(targetVec, 0.2);
+        controlsRef.current.update();
+      }
     }
   });
 
@@ -152,6 +187,7 @@ export const Experience = () => {
               topColor={me.topColor}
               bottomColor={me.bottomColor}
               isLocal
+              ref={localRef}
             />
           ) : (
             <AnimatedWoman
@@ -163,6 +199,7 @@ export const Experience = () => {
               topColor={me.topColor}
               bottomColor={me.bottomColor}
               isLocal
+              ref={localRef}
             />
           )
         )}
