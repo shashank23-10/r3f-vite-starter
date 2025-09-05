@@ -68,8 +68,10 @@ export const Experience = () => {
       <ambientLight intensity={0.4} />
       <OrbitControls
         makeDefault
-        minPolarAngle={0}
-        maxPolarAngle={Math.PI / 2 - 0.01} // stay just above the horizon
+        minPolarAngle={THREE.MathUtils.degToRad(50)}
+        maxPolarAngle={Math.PI / 2 - 0.1} 
+        minDistance={2}   
+        maxDistance={18}  
       />
 
        {/* === World that scrolls past the player === */}
