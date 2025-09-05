@@ -10,7 +10,7 @@ import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { AnimatedWoman } from "./AnimatedWoman";fvbcb
+import { AnimatedWoman } from "./AnimatedWoman";
 import { BusinessMan } from "./BusinessMan";
 import { Item } from "./Item";
 import { charactersAtom, mapAtom, socket , userAtom } from "./SocketManager";
