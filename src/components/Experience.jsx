@@ -28,6 +28,8 @@ export const Experience = () => {
   const { scene } = useGLTF("/models/InsightCenter.glb");
 
   const worldRef = useRef(null);
+  const controlsRef = useRef(null);
+  const targetVec = useMemo(() => new THREE.Vector3(0, 1.6, 0), []);
 
   // --- color guard: fixes invalid hex like "#1a191" ---
   const fixColor = (c) => {
@@ -60,6 +62,10 @@ export const Experience = () => {
     if (worldRef.current) {
       worldRef.current.position.set(-px, -py, -pz);
     }
+    if (controlsRef.current) {
+      controlsRef.current.target.lerp(targetVec, 0.2);
+      controlsRef.current.update();
+    }
   });
 
   return (
@@ -67,11 +73,15 @@ export const Experience = () => {
       <Environment preset="sunset" />
       <ambientLight intensity={0.4} />
       <OrbitControls
+        ref={controlsRef}
         makeDefault
+        enablePan={false}
+        enableDamping
+        dampingFactor={0.1}
         minPolarAngle={THREE.MathUtils.degToRad(50)}
-        maxPolarAngle={Math.PI / 2 - 0.1} 
-        minDistance={2}   
-        maxDistance={18}  
+        maxPolarAngle={Math.PI / 2 - 0.1}
+        minDistance={2}
+        maxDistance={18}
       />
 
        {/* === World that scrolls past the player === */}
