@@ -70,6 +70,8 @@ function App() {
         <MiniMap
           src="/assets/map_wireframe.png"
           markers={markers}
+          title="Insight Center Map"
+          miniScale={0.20}
         />
         </>
       )}      

@@ -13,6 +13,8 @@ export function MiniMap({
 }) {
 const [open, setOpen] = useState(false);
 const overlayRef = useRef(null);
+const expandedHostRef = useRef(null);
+const [expandedScale, setExpandedScale] = useState(1); 
 
 const openModal = () => {
     setOpen(true);
@@ -229,11 +231,13 @@ const styles = {
     flex: 1,
     background: "#f8f8f8",
     },
-    modalImg: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
+    modalFitHost: {
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
     },
     cornerBadge: {
     position: "absolute",
@@ -248,12 +252,30 @@ const styles = {
     },
 };
 
+useEffect(() => {
+    if (!open) return;
+    const el = expandedHostRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+        const { clientWidth: w, clientHeight: h } = el;
+        const scale = Math.min(w / 1920, h / 1080);
+        setExpandedScale(scale || 1);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+}, [open]);
+
 return (
     <>
     {/* Compact fixed minimap */}
     {(() => {
-      const scaledW = 1920 * miniScale;
-      const scaledH = 1080 * miniScale;
+        const scaledW = 1920 * miniScale;
+        const scaledH = 1080 * miniScale;
+        const finalMarker = 12;        
+        const finalFont = 14;          
+        const sizeBefore = finalMarker / miniScale;
+        const fontBefore = finalFont / miniScale;
+
         return (
             <div
             style={{ ...styles.rootMini, width: scaledW, height: scaledH }}
@@ -286,7 +308,7 @@ return (
             ) : (
                 <Grid w={1920} h={1080} />
             )}
-            <MarkerLayer w={1920} h={1080} size={12} fontSize={14} />
+            <MarkerLayer w={1920} h={1080} size={sizeBefore} fontSize={fontBefore} />
             </div>
         </div>
         );
@@ -303,27 +325,25 @@ return (
             </button>
             </div>
             <div style={styles.modalBody}>
-            <div style={{ position: "absolute", inset: 0 }}>
-                {src ? (
-                <img alt="MiniMap Expanded" src={src} style={styles.modalImg} />
-                ) : (
-                // Scaled-up grid fallback (keeps 0..100 logical coords)
-                <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                    <rect x="0" y="0" width="100" height="100" fill="#fafafa" />
-                    {Array.from({ length: 9 }).map((_, i) => {
-                    const p = (i + 1) * 10;
-                    return (
-                        <g key={p}>
-                        <line x1={p} y1="0" x2={p} y2="100" stroke="#e5e5e5" strokeWidth="0.7" />
-                        <line x1="0" y1={p} x2="100" y2={p} stroke="#e5e5e5" strokeWidth="0.7" />
-                        </g>
-                    );
-                    })}
-                    <rect x="0.5" y="0.5" width="99" height="99" fill="none" stroke="#d4d4d4" />
-                </svg>
-                )}
-                <MarkerLayer w={100} h={100} size={8} fontSize={11} />
-            </div>
+            <div ref={expandedHostRef} style={styles.modalFitHost}>
+                {/* Inner scene is always 1920×1080; we scale to fit host */}
+                <div
+                    style={{
+                        position: "relative",
+                        width: 1920,
+                        height: 1080,
+                        transform: `scale(${expandedScale})`,
+                        transformOrigin: "center center",
+                    }}
+                    >
+                    {src ? (
+                        <img alt="MiniMap Expanded" src={src} style={styles.imageFullRes} />
+                    ) : (
+                        <Grid w={1920} h={1080} />
+                    )}
+                    <MarkerLayer w={1920} h={1080} size={12} fontSize={14} />
+                    </div>
+                </div>
 
             <div style={styles.cornerBadge}>Expanded view</div>
             </div>
