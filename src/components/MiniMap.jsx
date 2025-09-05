@@ -9,6 +9,7 @@ export function MiniMap({
     onOpen,
     onClose,
     title = "MiniMap",
+    miniScale = 0.18,
 }) {
 const [open, setOpen] = useState(false);
 const overlayRef = useRef(null);
@@ -44,26 +45,31 @@ useEffect(() => {
     return () => window.removeEventListener("mousedown", handler);
 }, [open]);
 
-// Basic grid pattern for fallback SVG background
-const Grid = ({ size = 300 }) => {
-    const step = 10;
-    const lines = useMemo(() => {
+// Basic grid pattern for fallback SVG background (supports 1920x1080)
+const Grid = ({ w = 1920, h = 1080 }) => {
+  const step = 40; // grid every ~40px at full res
+  const vLines = useMemo(() => {
     const arr = [];
-    for (let i = step; i < size; i += step) arr.push(i);
+    for (let x = step; x < w; x += step) arr.push(x);
     return arr;
-    }, [size]);
-    return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <rect x="0" y="0" width={size} height={size} fill="#fafafa" />
-        {lines.map((p) => (
-        <line key={`v${p}`} x1={p} y1="0" x2={p} y2={size} stroke="#e5e5e5" strokeWidth="1" />
-        ))}
-        {lines.map((p) => (
-        <line key={`h${p}`} x1="0" y1={p} x2={size} y2={p} stroke="#e5e5e5" strokeWidth="1" />
-        ))}
-        <rect x="0.5" y="0.5" width={size - 1} height={size - 1} fill="none" stroke="#d4d4d4" />
+  }, [w]);
+  const hLines = useMemo(() => {
+    const arr = [];
+    for (let y = step; y < h; y += step) arr.push(y);
+    return arr;
+  }, [h]);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <rect x="0" y="0" width={w} height={h} fill="#fafafa" />
+      {vLines.map((x) => (
+        <line key={`v${x}`} x1={x} y1="0" x2={x} y2={h} stroke="#e5e5e5" strokeWidth="1" />
+      ))}
+      {hLines.map((y) => (
+        <line key={`h${y}`} x1="0" y1={y} x2={w} y2={y} stroke="#e5e5e5" strokeWidth="1" />
+      ))}
+      <rect x="0.5" y="0.5" width={w - 1} height={h - 1} fill="none" stroke="#d4d4d4" />
     </svg>
-    );
+  );
 };
 
 // Marker renderer reused by compact and expanded views
@@ -124,8 +130,6 @@ const styles = {
     position: "fixed",
     bottom: "1rem",
     right: "1rem",
-    width: 300,
-    height: 300,
     borderRadius: 12,
     overflow: "hidden",
     background: "#fff",
@@ -166,11 +170,11 @@ const styles = {
     placeItems: "center",
     cursor: "pointer",
     },
-    image: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
+    imageFullRes: {
+        width: 1920,
+        height: 1080,
+        objectFit: "cover",
+        display: "block",
     },
     overlay: {
     position: "fixed",
@@ -247,7 +251,14 @@ const styles = {
 return (
     <>
     {/* Compact fixed minimap */}
-    <div style={styles.rootMini} aria-label="MiniMap (compact)">
+    {(() => {
+      const scaledW = 1920 * miniScale;
+      const scaledH = 1080 * miniScale;
+        return (
+            <div
+            style={{ ...styles.rootMini, width: scaledW, height: scaledH }}
+            aria-label="MiniMap (compact)"
+            >
         {/* Header with title and expand */}
         <div style={styles.headerMini}>
         <div style={styles.titleMini}>{title}</div>
@@ -261,12 +272,25 @@ return (
         </button>
         </div>
 
-        {/* Content */}
-        <div style={{ position: "relative", width: "100%", height: "100%" }}>
-        {src ? <img alt="MiniMap" src={src} style={styles.image} /> : <Grid size={300} />}
-        <MarkerLayer w={300} h={300} size={8} fontSize={11} />
+        <div
+            style={{
+                position: "relative",
+                width: 1920,
+                height: 1080,
+                transform: `scale(${miniScale})`,
+                transformOrigin: "top left",
+            }}
+            >
+            {src ? (
+                <img alt="MiniMap" src={src} style={styles.imageFullRes} />
+            ) : (
+                <Grid w={1920} h={1080} />
+            )}
+            <MarkerLayer w={1920} h={1080} size={12} fontSize={14} />
+            </div>
         </div>
-    </div>
+        );
+    })()}
 
     {/* Modal (expanded) */}
     {open && (
