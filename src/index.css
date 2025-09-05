@@ -6,3 +6,11 @@
 body {
   margin: 0;
 }
+
+/* index.css */
+.bg-hero {
+  background-image: url("/backgrounds/space-hall.jpg"); /* put image in public/backgrounds */
+  background-size: cover;
+  background-position: center;
+}
+
