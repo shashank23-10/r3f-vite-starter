@@ -146,8 +146,8 @@ export function VoiceChat({ userId, peers }) {
       onClick={toggleMute}
       style={{
         position: "absolute",
-        bottom: "1rem",
-        right: "1rem",
+        top: "1rem",
+        left: "1rem",
         width: "50px",
         height: "50px",
         borderRadius: "50%",
