@@ -27,7 +27,11 @@ export const Experience = () => {
     <>
       <Environment preset="sunset" />
       <ambientLight intensity={0.4} />
-      <OrbitControls />
+      <OrbitControls
+        makeDefault
+        minPolarAngle={0}
+        maxPolarAngle={Math.PI / 2 - 0.01} // stay just above the horizon
+      />
 
       {/* Main 3D Scene */}
       <primitive object={scene} position={[-25, 0, 25]} />
