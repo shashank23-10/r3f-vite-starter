@@ -20,6 +20,7 @@ export function AnimatedWoman({
   bottomColor = "brown",
   id,
   username = "Player",   // ✅ new prop for label
+  isLocal = false,
   ...props
 }) {
 

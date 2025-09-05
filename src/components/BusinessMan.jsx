@@ -21,6 +21,7 @@ export function BusinessMan({
   bottomColor = "brown",
   id,
   username = "Player",   // ✅ new prop for label
+  isLocal = false,
   ...props
 }) {
   const position = useMemo(() => props.position, []);
