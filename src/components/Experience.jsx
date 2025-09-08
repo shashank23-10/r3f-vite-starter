@@ -325,7 +325,7 @@ export const Experience = ({
                 key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
                 ref={avatarRef}
                 id={me.id}
-               username={me.name || displayName}
+                username={me.name || displayName}
                 isLocal
                 anim={anim}
                 moveSpeed={vel.current.length()}
