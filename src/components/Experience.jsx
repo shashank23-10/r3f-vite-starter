@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Environment, PointerLockControls } from "@react-three/drei";
 import { useAtom } from "jotai";
-import { charactersAtom, userAtom } from "./SocketManager";
+import { charactersAtom, userAtom, socket } from "./SocketManager";
 import { BusinessMan } from "./BusinessMan";
 import { AnimatedWoman } from "./AnimatedWoman";
 
@@ -22,7 +22,7 @@ export const Experience = ({
   const avatarRef = useRef(); // forwardRef from avatar
   const keys = useRef({ w: false, a: false, s: false, d: false, shift: false });
   // multiplayer atoms
-  const [characters] = useAtom(charactersAtom);
+  const [characters, setCharacters] = useAtom(charactersAtom);
   const [user] = useAtom(userAtom);
 
   const extractId = (obj) =>
@@ -30,35 +30,53 @@ export const Experience = ({
       ? (obj.id ?? obj.userId ?? obj.socketId ?? obj.uid ?? obj.token ?? null)
       : obj;
   const idsEqual = (a, b) => a != null && b != null && String(a) === String(b);
-  const nameEqual = (a, b) =>
-    a && b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  // Track live socket id so we can match our server copy robustly
+  const [sid, setSid] = useState(null);
+  useEffect(() => {
+    const onConnect = () => setSid(socket?.id ?? null);
+    const onDisconnect = () => setSid(null);
+    onConnect();
+    socket?.on("connect", onConnect);
+    socket?.on("disconnect", onDisconnect);
+    return () => {
+      socket?.off("connect", onConnect);
+      socket?.off("disconnect", onDisconnect);
+    };
+  }, []);
+
+  // “Who am I?” — consider multiple local ids (userAtom + socket.id)
+  const myIds = useMemo(() => {
+    const cand = [extractId(user), user?.socketId, user?.id, user?.uid, sid];
+    return cand.filter(Boolean).map(String);
+  }, [user, sid]);
+
   const belongsToSelf = (c) => {
-    const myId = extractId(user);
-    const cidList = [c?.id, c?.userId, c?.socketId, c?.uid, c?.token];
-    // 1) any id matches → it’s me
-    if (myId && cidList.some((cid) => idsEqual(cid, myId))) return true;
-    // 2) explicit flag from server
-    if (c?.isLocal === true) return true;
-    // 3) last resort: name match against known local names
-    const localName = user?.name ?? username;
-    return nameEqual(c?.name, localName);
+    if (!myIds.length) return false;
+    const cidList = [c?.id, c?.userId, c?.socketId, c?.uid, c?.token]
+      .filter(Boolean)
+      .map(String);
+    return myIds.some((id) => cidList.includes(id));
   };
 
-  const me = useMemo(() => {
-    if (!Array.isArray(characters)) return undefined;
-    const byId = characters.find(belongsToSelf);
-    return byId ?? (characters.length === 1 ? characters[0] : undefined);
-  }, [characters, user, username]);
+  const me = useMemo(
+    () => (Array.isArray(characters) ? characters.find(belongsToSelf) : undefined),
+    [characters, belongsToSelf]
+  );
   const displayName = me?.name ?? user?.name ?? username;
   const avatarType = (me?.avatar ?? avatar)?.toLowerCase?.() ?? "male";
   const hairCol = me?.hairColor ?? hairColor;
   const topCol = me?.topColor ?? topColor;
   const bottomCol = me?.bottomColor ?? bottomColor;
   const hasServerChars = Array.isArray(characters) && characters.length > 0;
+  const remotes = useMemo(
+    () => (Array.isArray(characters) ? characters.filter((c) => !belongsToSelf(c)) : []),
+    [characters, belongsToSelf]
+  );
 
   // locomotion state
   const vel = useRef(new THREE.Vector3());
   const [anim, setAnim] = useState("idle"); // "idle" | "walk" | "run"
+  const lastSync = useRef({ t: 0, x: NaN, y: NaN, z: NaN, q: new THREE.Quaternion() });
 
   // Tunables (m/s and smoothing)
   const WALK_SPEED = 1.6;
@@ -95,9 +113,12 @@ export const Experience = ({
     };
   }, []);
 
-  // Initial placements (place cam behind avatar using its true forward)
+  // Initial placement: run ONCE for the local avatar to avoid snapping when
+  // characters array updates with new objects for the same player.
+  const spawnedOnce = useRef(false);
   useEffect(() => {
-    if (!avatarRef.current) return;
+    if (!avatarRef.current || spawnedOnce.current) return;
+    spawnedOnce.current = true;
     // Start from server position if available
     const startPos = Array.isArray(me?.position) ? me.position : [0, 0, 0];
     avatarRef.current.position.set(startPos[0], 0, startPos[2]);
@@ -114,7 +135,15 @@ export const Experience = ({
       .add(new THREE.Vector3(0, CAM_HEIGHT * 0.85, 0))
       .add(forward.clone().multiplyScalar(3)); // ahead
     camera.lookAt(lookTarget);
-  }, [camera, me]);
+    // send initial spawn to server (and optimistic local update)
+    const p = avatarRef.current.position;
+    socket?.emit("move", [p.x, 0, p.z]);
+    setCharacters((prev) =>
+      Array.isArray(prev)
+        ? prev.map((c) => (belongsToSelf(c) ? { ...c, position: [p.x, 0, p.z] } : c))
+        : prev
+    );
+  }, [camera, !!me]);
 
   useFrame((_, delta) => {
     if (!avatarRef.current) return;
@@ -177,6 +206,38 @@ export const Experience = ({
       .add(avatarForward.clone().multiplyScalar(3)); // ahead
     camera.lookAt(lookTarget);
 
+    const now = performance.now();
+    if (now - lastSync.current.t > 80) { // ~12.5 fps network updates
+      const q = avatarRef.current.quaternion;
+      const moved =
+        (avatarPos.x !== lastSync.current.x) ||
+        (avatarPos.y !== lastSync.current.y) ||
+        (avatarPos.z !== lastSync.current.z);
+      const rotated = Math.abs(1 - Math.abs(q.dot(lastSync.current.q))) > 1e-3;
+      if (moved || rotated) {
+        // server API used elsewhere in your code expects "move" with [x,0,z]
+        socket?.emit("move", [avatarPos.x, 0, avatarPos.z]);
+        // optimistic update so remotes react immediately
+        const arrPos = [avatarPos.x, 0, avatarPos.z];
+        setCharacters((prev) =>
+          Array.isArray(prev)
+            ? prev.map((c) =>
+                belongsToSelf(c) ? { ...c, position: arrPos } : c
+              )
+            : prev
+        );
+        lastSync.current = {
+          t: now,
+          x: avatarPos.x,
+          y: avatarPos.y,
+          z: avatarPos.z,
+          q: q.clone(),
+        };
+      } else {
+        lastSync.current.t = now;
+      }
+    }
+
     // Animation state machine (update only on state change)
     const speedNow = vel.current.length();
     const nextAnim =
@@ -196,78 +257,74 @@ export const Experience = ({
       {/* Scene */}
       <primitive object={scene} position={[-25, 0, 25]} />
 
-      {/* Use the server list: one of them is the local avatar, others are remotes. */}
-      {hasServerChars
-        ? characters.map((c) => {
-            const isMe = me ? c === me : (belongsToSelf(c) || characters.length === 1);
-            const type = (c.avatar?.toLowerCase?.() ?? "male");
-            const key = c.id ?? c.socketId ?? c.userId ?? c.name;
-            if (isMe) {
-              return type === "male" ? (
-                <BusinessMan
-                  key={key}
-                  ref={avatarRef}
-                  id={c.id}
-                  username={c.name || displayName}
-                  isLocal
-                  anim={anim}
-                 moveSpeed={vel.current.length()}
-                  hairColor={c.hairColor ?? hairCol}
-                  topColor={c.topColor ?? topCol}
-                  bottomColor={c.bottomColor ?? bottomCol}
-                />
-              ) : (
-                <AnimatedWoman
-                  key={key}
-                  ref={avatarRef}
-                  id={c.id}
-                  username={c.name || displayName}
-                  isLocal
-                  anim={anim}
-                  moveSpeed={vel.current.length()}
-                  hairColor={c.hairColor ?? hairCol}
-                  topColor={c.topColor ?? topCol}
-                  bottomColor={c.bottomColor ?? bottomCol}
-                />
-              );
-            }
-            // remote
-            return type === "male" ? (
-              <BusinessMan
-                key={key}
-                id={c.id}
-                username={c.name || "Player"}
-                position={new THREE.Vector3(...(c.position || [0, 0, 0]))}
-                hairColor={c.hairColor}
-                topColor={c.topColor}
-                bottomColor={c.bottomColor}
-              />
-            ) : (
-              <AnimatedWoman
-                key={key}
-                id={c.id}
-                username={c.name || "Player"}
-                position={new THREE.Vector3(...(c.position || [0, 0, 0]))}
-                hairColor={c.hairColor}
-               topColor={c.topColor}
-                bottomColor={c.bottomColor}
-              />
-            );
-          })
-        : (
-          // Fallback when server hasn't sent anything yet.
-          (avatarType === "male" ? (
+      {/* 1) Render remotes (never the local). */}
+      {remotes.map((c) => {
+        const type = (c.avatar?.toLowerCase?.() ?? "male");
+        const key = c.id ?? c.socketId ?? c.userId ?? c.name;
+        return type === "male" ? (
+          <BusinessMan
+            key={key}
+            id={c.id}
+            username={c.name || "Player"}
+            position={new THREE.Vector3(...(c.position || [0, 0, 0]))}
+            hairColor={c.hairColor}
+            topColor={c.topColor}
+            bottomColor={c.bottomColor}
+          />
+        ) : (
+          <AnimatedWoman
+            key={key}
+            id={c.id}
+            username={c.name || "Player"}
+            position={new THREE.Vector3(...(c.position || [0, 0, 0]))}
+            hairColor={c.hairColor}
+            topColor={c.topColor}
+            bottomColor={c.bottomColor}
+          />
+        );
+      })}
+
+      {/* 2) Render exactly one local avatar: server copy if known; else fallback. */}
+      {me
+        ? ((me.avatar?.toLowerCase?.() ?? "male") === "male" ? (
+            <BusinessMan
+              key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
+              ref={avatarRef}
+              id={me.id}
+              username={me.name || displayName}
+              isLocal
+              anim={anim}
+              moveSpeed={vel.current.length()}
+              hairColor={me.hairColor ?? hairCol}
+              topColor={me.topColor ?? topCol}
+              bottomColor={me.bottomColor ?? bottomCol}
+            />
+          ) : (
+            <AnimatedWoman
+              key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
+              ref={avatarRef}
+              id={me.id}
+              username={me.name || displayName}
+              isLocal
+              anim={anim}
+              moveSpeed={vel.current.length()}
+              hairColor={me.hairColor ?? hairCol}
+              topColor={me.topColor ?? topCol}
+              bottomColor={me.bottomColor ?? bottomCol}
+            />
+          ))
+        : (!hasServerChars ? (avatarType === "male" ? (
             <BusinessMan
               key={`${extractId(user) || "local"}:${displayName}`}
               ref={avatarRef}
               id={extractId(user) || "local"}
               username={displayName}
-             isLocal
+              isLocal
               anim={anim}
               moveSpeed={vel.current.length()}
               hairColor={hairCol}
               topColor={topCol}
-              bottomColor={bottomCol}
+              bottomColor={bottomColor}
             />
           ) : (
             <AnimatedWoman
@@ -280,10 +337,9 @@ export const Experience = ({
               moveSpeed={vel.current.length()}
               hairColor={hairCol}
               topColor={topCol}
-              bottomColor={bottomCol}
+              bottomColor={bottomColor}
             />
-          ))
-        )}
+          )) : null)}
     </>
   );
 };
