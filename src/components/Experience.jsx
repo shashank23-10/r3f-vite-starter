@@ -1,208 +1,160 @@
 // Experience.jsx
-import {
-  Environment,
-  OrbitControls,
-  useCursor,
-  useGLTF,
-} from "@react-three/drei";
-
-import { useFrame, useThree } from "@react-three/fiber";
-import { useRef, useMemo } from "react";
-
-import { useAtom } from "jotai";
-import { useState } from "react";
 import * as THREE from "three";
-import { AnimatedWoman } from "./AnimatedWoman";
+import { useEffect, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useGLTF, Environment, PointerLockControls } from "@react-three/drei";
 import { BusinessMan } from "./BusinessMan";
-import { Item } from "./Item";
-import { charactersAtom, mapAtom, socket, userAtom } from "./SocketManager";
+import { AnimatedWoman } from "./AnimatedWoman";
 
-export const Experience = () => {
-  const [characters] = useAtom(charactersAtom);
-  const [map] = useAtom(mapAtom);
-  const [user] = useAtom(userAtom);
-  const [onFloor, setOnFloor] = useState(false);
-
-  useCursor(onFloor);
-
+// Human-like locomotion: acceleration/deceleration + turn smoothing.
+// WASD to move; hold Shift to run. Click canvas to enable mouse-look.
+export const Experience = ({
+  avatar = "male",
+  username = "Player",
+  hairColor,
+  topColor,
+  bottomColor,
+}) => {
   const { scene } = useGLTF("/models/InsightCenter.glb");
-
-  const worldRef = useRef(null);
-  const controlsRef = useRef(null);
-  const targetVec = useMemo(() => new THREE.Vector3(0, 1.6, 0), []);
-  const localRef = useRef(null);
   const { camera } = useThree();
-  const tmp = useMemo(() => ({
-    pos: new THREE.Vector3(),
-    dir: new THREE.Vector3(),
-    up:  new THREE.Vector3(0, 1, 0)
-  }), []);
 
-  // --- color guard: fixes invalid hex like "#1a191" ---
-  const fixColor = (c) => {
-    if (!c) return "#ffffff";
-    if (typeof c === "string" && c.startsWith("#")) {
-      // accept #rgb (4), #rrggbb (7), #rrggbbaa (9)
-      if (c.length === 4 || c.length === 7 || c.length === 9) return c;
-      // pad/truncate to 7 (#rrggbb)
-      const hex = c.replace("#", "");
-      const padded = (hex + "000000").slice(0, 6);
-      return `#${padded}`;
+  const avatarRef = useRef(); // forwardRef from avatar
+  const keys = useRef({ w: false, a: false, s: false, d: false, shift: false });
+
+  // locomotion state
+  const vel = useRef(new THREE.Vector3());
+  const [anim, setAnim] = useState("idle"); // "idle" | "walk" | "run"
+
+  // Tunables (m/s and smoothing)
+  const WALK_SPEED = 1.6;
+  const RUN_SPEED = 3.8;
+  const ACCEL = 8.0;   // m/s^2 when pressing move keys
+  const DECEL = 10.0;  // m/s^2 when releasing
+  const TURN_SMOOTH = 12.0; // higher = snappier turn
+
+  useEffect(() => {
+    const down = (e) => {
+      if (e.code === "KeyW") keys.current.w = true;
+      else if (e.code === "KeyA") keys.current.a = true;
+      else if (e.code === "KeyS") keys.current.s = true;
+      else if (e.code === "KeyD") keys.current.d = true;
+      else if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.current.shift = true;
+    };
+    const up = (e) => {
+      if (e.code === "KeyW") keys.current.w = false;
+      else if (e.code === "KeyA") keys.current.a = false;
+      else if (e.code === "KeyS") keys.current.s = false;
+      else if (e.code === "KeyD") keys.current.d = false;
+      else if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.current.shift = false;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  // Initial placements
+  useEffect(() => {
+    camera.position.set(0, 1.6, 5);
+    camera.lookAt(0, 1.6, 0);
+    if (avatarRef.current) {
+      avatarRef.current.position.set(0, 0, 0);
     }
-    // try CSS color names or fallback
-    try {
-      new THREE.Color(c);
-      return c;
-    } catch {
-      return "#ffffff";
+  }, [camera]);
+
+  useFrame((_, delta) => {
+    if (!avatarRef.current) return;
+
+    // Input → desired direction (relative to camera facing, flattened)
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    fwd.y = 0;
+    fwd.normalize();
+
+    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+
+    const dir = new THREE.Vector3();
+    if (keys.current.w) dir.add(fwd);
+    if (keys.current.s) dir.sub(fwd);
+    if (keys.current.a) dir.sub(right);
+    if (keys.current.d) dir.add(right);
+
+    const hasInput = dir.lengthSq() > 0;
+    if (hasInput) dir.normalize();
+
+    const targetSpeed = hasInput ? (keys.current.shift ? RUN_SPEED : WALK_SPEED) : 0;
+
+    // Smooth velocity toward desired velocity
+    const desired = dir.clone().multiplyScalar(targetSpeed);
+    const rate = hasInput ? ACCEL : DECEL; // accelerate when input; otherwise decelerate to 0
+    const lerpAlpha = 1 - Math.exp(-rate * delta);
+    vel.current.lerp(desired, lerpAlpha);
+
+    // Apply motion
+    const step = vel.current.clone().multiplyScalar(delta);
+    if (step.lengthSq() > 0) {
+      avatarRef.current.position.add(step);
+      avatarRef.current.position.y = 0; // stay grounded
+      camera.position.add(step);        // keep camera offset
     }
-  };
 
-  // Helper: get latest local player's world position
-  const getLocalPlayerPos = () => {
-    const me = characters.find((c) => c.id === user);
-    return me?.position ?? [0, 0, 0];
-  };
-  // Shift the world so the local player is always at origin
-  useFrame(() => {
-    const [px, py, pz] = getLocalPlayerPos();
-    if (worldRef.current) {
-      worldRef.current.position.set(-px, -py, -pz);
+    // Smooth facing toward movement direction (if moving)
+    if (hasInput) {
+      const yaw = Math.atan2(dir.x, dir.z); // face move direction on Y
+      const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+      const slerpAlpha = 1 - Math.exp(-TURN_SMOOTH * delta);
+      avatarRef.current.quaternion.slerp(targetQuat, slerpAlpha);
     }
-    // --- TPP follow camera (spring arm behind local player) ---
-    if (localRef.current) {
-      const g = localRef.current;
-      // local player world position (player is at origin, but keep generic)
-      g.getWorldPosition(tmp.pos);
-      // forward direction the player is facing
-      g.getWorldDirection(tmp.dir); // points forward
 
-      // desired camera offset: 5m behind, 2m above head (~1.6m eye)
-      const desired = tmp.pos
-        .clone()
-        .add(tmp.dir.clone().multiplyScalar(-5)) // behind
-        .add(tmp.up.clone().multiplyScalar(2.2)); // height
-
-      // smooth follow
-      camera.position.lerp(desired, 0.12);
-
-      // keep controls focused on the player for orbit
-      if (controlsRef.current) {
-        controlsRef.current.target.lerp(
-          tmp.pos.clone().add(new THREE.Vector3(0, 1.6, 0)),
-          0.2
-        );
-        controlsRef.current.update();
-      }
-    } else {
-      // fallback to default target if localRef not ready yet
-      if (controlsRef.current) {
-        controlsRef.current.target.lerp(targetVec, 0.2);
-        controlsRef.current.update();
-      }
-    }
+    // Animation state machine (update only on state change)
+    const speedNow = vel.current.length();
+    const nextAnim =
+      speedNow < 0.05 ? "idle" : keys.current.shift && speedNow > WALK_SPEED * 0.9 ? "run" : "walk";
+    if (nextAnim !== anim) setAnim(nextAnim);
   });
 
   return (
     <>
+      {/* Lighting */}
       <Environment preset="sunset" />
       <ambientLight intensity={0.4} />
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.1}
-        minPolarAngle={THREE.MathUtils.degToRad(50)}
-        maxPolarAngle={Math.PI / 2 - 0.1}
-        minDistance={2}
-        maxDistance={18}
-      />
 
-       {/* === World that scrolls past the player === */}
-      <group ref={worldRef}>
-        {/* Main 3D Scene */}
-        <primitive object={scene} position={[-25, 0, 25]} />
+      {/* Mouse-look (click canvas to lock pointer) */}
+      <PointerLockControls />
 
-        {/* Interactive floor plane (lives in world-space) */}
-        <mesh
-          rotation-x={-Math.PI / 2}
-          position={[0, -0.001, 0]}
-          onClick={(e) => {
-            // e.point is player-relative because world is shifted; convert back to world coords
-            const [px, , pz] = getLocalPlayerPos();
-            socket.emit("move", [e.point.x + px, 0, e.point.z + pz]);
-          }}
-          onPointerEnter={() => setOnFloor(true)}
-          onPointerLeave={() => setOnFloor(false)}
-        >
-          <planeGeometry args={[50, 50]} />
-          <meshStandardMaterial transparent opacity={0} />
-        </mesh>
+      {/* Scene */}
+      <primitive object={scene} position={[-25, 0, 25]} />
 
-        {/* Scene Items (world-space) */}
-        {map?.items?.map((item, idx) => (
-          <Item key={`${item.name}-${idx}`} item={item} />
-        ))}
-
-        {/* Remote players (world-space) */}
-        {characters
-          .filter((c) => c.id !== user)
-          .map((character) =>
-            character.avatar === "male" ? (
-              <BusinessMan
-                key={character.id}
-                id={character.id}
-                username={character.name || "Player"}
-                position={new THREE.Vector3(...character.position)}
-                hairColor={character.hairColor}
-                topColor={character.topColor}
-                bottomColor={character.bottomColor}
-              />
-            ) : (
-              <AnimatedWoman
-                key={character.id}
-                id={character.id}
-                username={character.name || "Player"}
-                position={new THREE.Vector3(...character.position)}
-                hairColor={character.hairColor}
-                topColor={character.topColor}
-                bottomColor={character.bottomColor}
-              />
-            )
-          )}
-      </group>
-
-      {/* Local player (fixed at origin, outside worldRef) */}
-      {characters
-        .filter((c) => c.id === user)
-        .map((me) =>
-          me.avatar === "male" ? (
-            <BusinessMan
-              key={me.id}
-              id={me.id}
-              username={me.name || "Player"}
-              position={new THREE.Vector3(0, 0, 0)}
-              hairColor={me.hairColor}
-              topColor={me.topColor}
-              bottomColor={me.bottomColor}
-              isLocal
-              ref={localRef}
-            />
-          ) : (
-            <AnimatedWoman
-              key={me.id}
-              id={me.id}
-              username={me.name || "Player"}
-              position={new THREE.Vector3(0, 0, 0)}
-              hairColor={me.hairColor}
-              topColor={me.topColor}
-              bottomColor={me.bottomColor}
-              isLocal
-              ref={localRef}
-            />
-          )
-        )}
+      {/* Local avatar with external animation control */}
+      {avatar === "male" ? (
+        <BusinessMan
+          ref={avatarRef}
+          id="local"
+          username={username}
+          isLocal
+          anim={anim}
+          moveSpeed={vel.current.length()}
+          position={new THREE.Vector3(0, 0, 0)}
+          hairColor={hairColor}
+          topColor={topColor}
+          bottomColor={bottomColor}
+        />
+      ) : (
+        <AnimatedWoman
+          ref={avatarRef}
+          id="local"
+          username={username}
+          isLocal
+          anim={anim}
+          moveSpeed={vel.current.length()}
+          position={new THREE.Vector3(0, 0, 0)}
+          hairColor={hairColor}
+          topColor={topColor}
+          bottomColor={bottomColor}
+        />
+      )}
     </>
   );
 };
