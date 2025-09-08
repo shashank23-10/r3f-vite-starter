@@ -191,6 +191,23 @@ export const Experience = ({
       }
     }
 
+    // Current avatar forward (for backward-only movement)
+    const currForward = LOCAL_FORWARD.clone()
+      .applyQuaternion(avatarRef.current.quaternion)
+      .normalize();
+
+    // If ONLY 'S' is pressed (no W/A/D and not autopilot), walk backward without changing facing.
+    const isBackwardOnly =
+      !aiDriving &&
+      keys.current.s &&
+      !keys.current.w &&
+      !keys.current.a &&
+      !keys.current.d;
+    if (isBackwardOnly) {
+      dir.copy(currForward).multiplyScalar(-1); // move straight back relative to avatar orientation
+      hasInput = true;
+    }
+
     const targetSpeed = hasInput
       ? (aiDriving ? RUN_SPEED : (keys.current.shift ? RUN_SPEED : WALK_SPEED))
       : 0;
@@ -208,8 +225,8 @@ export const Experience = ({
       avatarRef.current.position.y = 0; // stay grounded
     }
 
-    // Smooth facing toward movement direction (if moving)
-    if (hasInput) {
+    // Smooth facing toward movement direction (skip when pure-backpedal)
+    if (hasInput && !isBackwardOnly) {
       const yaw = Math.atan2(dir.x, dir.z); // face move direction on Y
       const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
       const slerpAlpha = 1 - Math.exp(-TURN_SMOOTH * delta);
