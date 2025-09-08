@@ -9,6 +9,7 @@ import { Chat } from "./components/Chat";
 import { VoiceChat } from "./components/VoiceChat";
 import MiniMap from "./components/MiniMap";
 import { useAtom } from "jotai";
+import { CameraToggle } from "./components/CameraToggle";
 
 function App() {
   const [step, setStep] = useState("login"); // login → persona → avatar → space
@@ -16,6 +17,7 @@ function App() {
   const [user] = useAtom(userAtom);
   const [characters] = useAtom(charactersAtom);
   const [navTarget, setNavTarget] = useState(null);
+  const [viewMode, setViewMode] = useState("TPP"); // "TPP" | "FPP"
 
   // ✅ Wrap onNext handlers so we can add side effects if needed
   const handleLoginNext = (name) => {
@@ -79,7 +81,7 @@ function App() {
         <>
         <Canvas shadows camera={{ position: [8, 8, 8], fov: 30 }}>
           <color attach="background" args={["#ececec"]} />
-          <Experience navTarget={navTarget} setNavTarget={setNavTarget} />
+          <Experience viewMode={viewMode} navTarget={navTarget} setNavTarget={setNavTarget} />
         </Canvas>
         <Chat /> {/* ✅ Multiplayer chat window */}
         <VoiceChat
@@ -96,6 +98,7 @@ function App() {
           title="Insight Center Map"
           miniScale={0.20}
         />
+        <CameraToggle value={viewMode} onChange={setViewMode} />
         </>
       )}      
     </>

@@ -15,9 +15,11 @@ export const Experience = ({
   hairColor,
   topColor,
   bottomColor,
+  viewMode = "TPP",    // "TPP" | "FPP"
   navTarget,          
   setNavTarget,
 }) => {
+  const isFPP = viewMode === "FPP";
   const { scene } = useGLTF("/models/InsightCenter.glb");
   const { camera } = useThree();
 
@@ -131,19 +133,28 @@ export const Experience = ({
     // Start from server position if available
     const startPos = Array.isArray(me?.position) ? me.position : [0, 0, 0];
     avatarRef.current.position.set(startPos[0], 0, startPos[2]);
-    const forward = LOCAL_FORWARD.clone()
-      .applyQuaternion(avatarRef.current.quaternion)
-      .normalize();
-    const camPos = avatarRef.current.position
-      .clone()
-      .add(new THREE.Vector3(0, CAM_HEIGHT, 0))
-      .add(forward.clone().multiplyScalar(-CAM_DISTANCE)); // behind
-    camera.position.copy(camPos);
-    const lookTarget = avatarRef.current.position
-      .clone()
-      .add(new THREE.Vector3(0, CAM_HEIGHT * 0.85, 0))
-      .add(forward.clone().multiplyScalar(3)); // ahead
-    camera.lookAt(lookTarget);
+
+    const forward = LOCAL_FORWARD.clone().applyQuaternion(avatarRef.current.quaternion).normalize();
+    if (isFPP) {
+      const camPos = avatarRef.current.position
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT * 0.9, 0))
+        .add(forward.clone().multiplyScalar(0.1));
+      camera.position.copy(camPos);
+      // orientation handled by PointerLockControls when enabled
+    } else {
+      const camPos = avatarRef.current.position
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT, 0))
+        .add(forward.clone().multiplyScalar(-CAM_DISTANCE)); // behind
+      camera.position.copy(camPos);
+      const lookTarget = avatarRef.current.position
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT * 0.85, 0))
+        .add(forward.clone().multiplyScalar(3)); // ahead
+      camera.lookAt(lookTarget);
+    }
+
     // send initial spawn to server (and optimistic local update)
     const p = avatarRef.current.position;
     socket?.emit("move", [p.x, 0, p.z]);
@@ -152,7 +163,14 @@ export const Experience = ({
         ? prev.map((c) => (belongsToSelf(c) ? { ...c, position: [p.x, 0, p.z] } : c))
         : prev
     );
-  }, [camera, !!me]);
+  }, [camera, !!me, isFPP]);
+
+  // If we exit FPP, release pointer lock so the cursor returns.
+  useEffect(() => {
+    if (!isFPP && typeof document !== "undefined" && document.pointerLockElement) {
+      document.exitPointerLock?.();
+    }
+  }, [isFPP]);
 
   useFrame((_, delta) => {
     if (!avatarRef.current) return;
@@ -204,7 +222,12 @@ export const Experience = ({
       !keys.current.a &&
       !keys.current.d;
     if (isBackwardOnly) {
-      dir.copy(currForward).multiplyScalar(-1); // move straight back relative to avatar orientation
+      // In FPP, backpedal relative to camera yaw; in TPP, relative to avatar facing.
+      if (isFPP) {
+        dir.copy(fwd).multiplyScalar(-1);
+      } else {
+        dir.copy(currForward).multiplyScalar(-1);
+      }
       hasInput = true;
     }
 
@@ -225,31 +248,50 @@ export const Experience = ({
       avatarRef.current.position.y = 0; // stay grounded
     }
 
-    // Smooth facing toward movement direction (skip when pure-backpedal)
-    if (hasInput && !isBackwardOnly) {
-      const yaw = Math.atan2(dir.x, dir.z); // face move direction on Y
-      const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+    if (isFPP) {
+      const e = new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
+      const yawQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, e.y, 0));
       const slerpAlpha = 1 - Math.exp(-TURN_SMOOTH * delta);
-      avatarRef.current.quaternion.slerp(targetQuat, slerpAlpha);
+      avatarRef.current.quaternion.slerp(yawQuat, slerpAlpha);
+    } else {
+      if (hasInput && !isBackwardOnly) {
+       const yaw = Math.atan2(dir.x, dir.z); // face move direction on Y
+        const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+        const slerpAlpha = 1 - Math.exp(-TURN_SMOOTH * delta);
+        avatarRef.current.quaternion.slerp(targetQuat, slerpAlpha);
+      }
     }
 
-    // --- Third-person camera follow (behind avatar, looking forward) ---
+    // --- Camera follow ---
     const avatarPos = avatarRef.current.position;
     // Avatar forward (use model's local forward axis)
-    const avatarForward = LOCAL_FORWARD.clone()
-      .applyQuaternion(avatarRef.current.quaternion)
-      .normalize();
-    const camTargetPos = avatarPos
-      .clone()
-      .add(new THREE.Vector3(0, CAM_HEIGHT, 0))
-      .add(avatarForward.clone().multiplyScalar(-CAM_DISTANCE));
     const camLerp = 1 - Math.exp(-CAM_SMOOTH * delta);
-    camera.position.lerp(camTargetPos, camLerp);
-    const lookTarget = avatarPos
-      .clone()
-      .add(new THREE.Vector3(0, CAM_HEIGHT * 0.85, 0))
-      .add(avatarForward.clone().multiplyScalar(3)); // ahead
-    camera.lookAt(lookTarget);
+    if (isFPP) {
+      // Head position + slight forward offset. Orientation is handled by PointerLockControls.
+      const avatarForward = LOCAL_FORWARD.clone()
+        .applyQuaternion(avatarRef.current.quaternion)
+        .normalize();
+      const camTargetPos = avatarPos
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT * 0.9, 0))
+        .add(avatarForward.clone().multiplyScalar(0.1));
+      camera.position.lerp(camTargetPos, camLerp);
+    } else {
+      // Third-person: behind-avatar follow, look ahead.
+      const avatarForward = LOCAL_FORWARD.clone()
+        .applyQuaternion(avatarRef.current.quaternion)
+        .normalize();
+      const camTargetPos = avatarPos
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT, 0))
+        .add(avatarForward.clone().multiplyScalar(-CAM_DISTANCE));
+      camera.position.lerp(camTargetPos, camLerp);
+      const lookTarget = avatarPos
+        .clone()
+        .add(new THREE.Vector3(0, CAM_HEIGHT * 0.85, 0))
+        .add(avatarForward.clone().multiplyScalar(3));
+      camera.lookAt(lookTarget);
+    }
 
     const now = performance.now();
     if (now - lastSync.current.t > 80) { // ~12.5 fps network updates
@@ -301,8 +343,8 @@ export const Experience = ({
       <Environment preset="sunset" />
       <ambientLight intensity={0.4} />
 
-      {/* Mouse-look (click canvas to lock pointer) */}
-      {/* <PointerLockControls /> */}
+      {/* Mouse-look (click canvas to lock pointer) in FPP */}
+      <PointerLockControls enabled={isFPP} />
 
       {/* Scene */}
       <primitive object={scene} position={[-25, 0, 25]} />
@@ -346,6 +388,7 @@ export const Experience = ({
                 isLocal
                 anim={anim}
                 moveSpeed={vel.current.length()}
+                visible={!isFPP}
                 hairColor={me.hairColor ?? hairCol}
                 topColor={me.topColor ?? topCol}
                 bottomColor={me.bottomColor ?? bottomCol}
@@ -359,6 +402,7 @@ export const Experience = ({
                 isLocal
                 anim={anim}
                 moveSpeed={vel.current.length()}
+                visible={!isFPP}
                 hairColor={me.hairColor ?? hairCol}
                 topColor={me.topColor ?? topCol}
                 bottomColor={me.bottomColor ?? bottomCol}
