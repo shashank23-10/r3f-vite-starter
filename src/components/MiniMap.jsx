@@ -6,6 +6,8 @@ import CloseIcon from "@mui/icons-material/Close";
 export function MiniMap({
     src,
     markers = [],
+    waypoints = [],              // + clickable waypoints (with world coords)
+    onWaypointClick,            // + callback when a waypoint is clicked
     onOpen,
     onClose,
     title = "MiniMap",
@@ -123,6 +125,48 @@ const MarkerLayer = ({ w, h, size = 6, fontSize = 10 }) => {
         );
         })}
     </div>
+    );
+};
+
+// + Waypoint renderer (clickable)
+const WaypointLayer = ({ w, h, size = 12, fontSize = 12, onPick }) => {
+    return (
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {waypoints.map((wp, i) => {
+            const left = (Math.min(Math.max(wp.x, 0), 100) / 100) * w;
+            const top  = (Math.min(Math.max(wp.y, 0), 100) / 100) * h;
+            return (
+            <button
+                key={wp.id || i}
+                title={wp.label || `Waypoint ${i + 1}`}
+                onClick={(e) => {
+                e.stopPropagation();
+                onPick?.(wp); // returns the whole waypoint (with world coords)
+                }}
+                style={{
+                position: "absolute",
+                left: left - size / 2,
+                top: top - size / 2,
+                width: size,
+                height: size,
+                borderRadius: 999,
+                border: "2px solid #fff",
+                background: "#f97316",    // orange
+                boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+                cursor: "pointer",
+                pointerEvents: "auto",
+                display: "grid",
+                placeItems: "center",
+                fontSize: Math.max(10, fontSize - 2),
+                color: "#111",
+                fontWeight: 700,
+                }}
+            >
+                {wp.badge ?? (typeof wp.id === "string" ? wp.id : i + 1)}
+            </button>
+            );
+        })}
+        </div>
     );
 };
 
@@ -275,6 +319,8 @@ return (
         const finalFont = 14;          
         const sizeBefore = finalMarker / miniScale;
         const fontBefore = finalFont / miniScale;
+        const wpBefore = 16 / miniScale;     // + waypoint size (compact)
+        const wpFontBefore = 14 / miniScale; // + waypoint font (compact)
 
         return (
             <div
@@ -309,6 +355,13 @@ return (
                 <Grid w={1920} h={1080} />
             )}
             <MarkerLayer w={1920} h={1080} size={sizeBefore} fontSize={fontBefore} />
+            <WaypointLayer
+                w={1920}
+                h={1080}
+                size={wpBefore}
+                fontSize={wpFontBefore}
+                onPick={onWaypointClick}
+            />
             </div>
         </div>
         );
@@ -342,6 +395,13 @@ return (
                         <Grid w={1920} h={1080} />
                     )}
                     <MarkerLayer w={1920} h={1080} size={12} fontSize={14} />
+                    <WaypointLayer
+                        w={1920}
+                        h={1080}
+                        size={18}
+                        fontSize={14}
+                        onPick={onWaypointClick}
+                    />
                     </div>
                 </div>
 

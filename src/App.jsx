@@ -15,6 +15,7 @@ function App() {
 
   const [user] = useAtom(userAtom);
   const [characters] = useAtom(charactersAtom);
+  const [navTarget, setNavTarget] = useState(null);
 
   // ✅ Wrap onNext handlers so we can add side effects if needed
   const handleLoginNext = (name) => {
@@ -30,13 +31,30 @@ function App() {
       const c = Math.min(Math.max(v, min), max);
       return ((c - min) / (max - min)) * 100;
     };
+
+    // world units: your plane is 50×50 centered at (0,0)
+    // edit these five according to your map:
+    const WAYPOINTS_WORLD = [
+      { id: "A", label: "Waypoint A", wx: -18, wz:  12 },
+      { id: "B", label: "Waypoint B", wx:  -5, wz:  20 },
+      { id: "C", label: "Waypoint C", wx:   8, wz:   6 },
+      { id: "D", label: "Waypoint D", wx:  15, wz: -10 },
+      { id: "E", label: "Waypoint E", wx: -12, wz: -18 },
+    ];
+
+    // Convert world → minimap percentages (0..100)
+    const waypointsForMini = WAYPOINTS_WORLD.map((wp) => {
+      const xPct = toPercent(wp.wx, X_MIN, X_MAX);
+      const yPct = 100 - toPercent(wp.wz, Z_MIN, Z_MAX); // invert so +Z is up
+      return { ...wp, x: xPct, y: yPct, badge: wp.id };
+    });
     const colorFromId = (id) => {
       let h = 0;
       const s = String(id);
       for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
       return `hsl(${h}, 70%, 45%)`;
     };
-    return characters.map((c) => {
+    const playerMarkers = characters.map((c) => {
       const [wx, , wz] = c.position || [0, 0, 0];
       const xPct = toPercent(wx, X_MIN, X_MAX);
       const yPct = 100 - toPercent(wz, Z_MIN, Z_MAX); // invert so +Z is up
@@ -48,7 +66,9 @@ function App() {
         color: c.id === user ? "#2563eb" : colorFromId(c.id),
       };
     });
+  return { playerMarkers, waypointsForMini, toPercent, X_MIN, X_MAX, Z_MIN, Z_MAX };
   })();
+
 
   return (
     <>
@@ -60,7 +80,7 @@ function App() {
         <>
         <Canvas shadows camera={{ position: [8, 8, 8], fov: 30 }}>
           <color attach="background" args={["#ececec"]} />
-          <Experience />
+          <Experience navTarget={navTarget} setNavTarget={setNavTarget} />
         </Canvas>
         <Chat /> {/* ✅ Multiplayer chat window */}
         <VoiceChat
@@ -69,7 +89,11 @@ function App() {
         />
         <MiniMap
           src="/assets/map_wireframe.png"
-          markers={markers}
+          markers={markers.playerMarkers}
+          waypoints={markers.waypointsForMini}
+          onWaypointClick={(wp) => {
+            setNavTarget({ x: wp.wx, z: wp.wz });
+          }}
           title="Insight Center Map"
           miniScale={0.20}
         />

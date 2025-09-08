@@ -15,6 +15,8 @@ export const Experience = ({
   hairColor,
   topColor,
   bottomColor,
+  navTarget,          
+  setNavTarget,
 }) => {
   const { scene } = useGLTF("/models/InsightCenter.glb");
   const { camera } = useThree();
@@ -88,6 +90,7 @@ export const Experience = ({
   const CAM_DISTANCE = 3.5;
   const CAM_SMOOTH = 10.0; // higher = snappier follow
   const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1); // model's local forward
+  const AUTO_STOP_DIST = 0.25; // + how close before stopping (meters)
 
 
   useEffect(() => {
@@ -97,6 +100,7 @@ export const Experience = ({
       else if (e.code === "KeyS") keys.current.s = true;
       else if (e.code === "KeyD") keys.current.d = true;
       else if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.current.shift = true;
+      if (navTarget) setNavTarget?.(null);
     };
     const up = (e) => {
       if (e.code === "KeyW") keys.current.w = false;
@@ -162,10 +166,29 @@ export const Experience = ({
     if (keys.current.a) dir.sub(right);
     if (keys.current.d) dir.add(right);
 
-    const hasInput = dir.lengthSq() > 0;
+    let hasInput = dir.lengthSq() > 0;
     if (hasInput) dir.normalize();
 
-    const targetSpeed = hasInput ? (keys.current.shift ? RUN_SPEED : WALK_SPEED) : 0;
+    // + Autopilot: if no manual input and we have a navTarget, move toward it
+    let aiDriving = false;
+    if (!hasInput && navTarget) {
+      const avatarPos = avatarRef.current.position.clone();
+      const dest = new THREE.Vector3(navTarget.x ?? 0, 0, navTarget.z ?? 0);
+      const toTarget = dest.clone().sub(new THREE.Vector3(avatarPos.x, 0, avatarPos.z));
+      const dist = toTarget.length();
+      if (dist > AUTO_STOP_DIST) {
+        dir.copy(toTarget.normalize());
+        hasInput = true;
+        aiDriving = true;
+      } else {
+        // reached — stop and clear
+        setNavTarget?.(null);
+      }
+    }
+
+    const targetSpeed = hasInput
+      ? (aiDriving ? RUN_SPEED : (keys.current.shift ? RUN_SPEED : WALK_SPEED))
+      : 0;
 
     // Smooth velocity toward desired velocity
     const desired = dir.clone().multiplyScalar(targetSpeed);
