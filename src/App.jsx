@@ -32,8 +32,7 @@ function App() {
       return ((c - min) / (max - min)) * 100;
     };
 
-    // world units: your plane is 50×50 centered at (0,0)
-    // edit these five according to your map:
+    
     const WAYPOINTS_WORLD = [
       { id: "A", label: "Waypoint A", wx: -18, wz:  12 },
       { id: "B", label: "Waypoint B", wx:  -5, wz:  20 },
