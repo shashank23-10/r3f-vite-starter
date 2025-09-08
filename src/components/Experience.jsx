@@ -10,7 +10,7 @@ import { AnimatedWoman } from "./AnimatedWoman";
 // Human-like locomotion: acceleration/deceleration + turn smoothing.
 // WASD to move; hold Shift to run. Click canvas to enable mouse-look.
 export const Experience = ({
-  avatar = "male",
+  avatar = null,
   username = "Player",
   hairColor,
   topColor,
@@ -65,13 +65,18 @@ export const Experience = ({
     [characters, belongsToSelf]
   );
   const displayName = me?.name ?? user?.name ?? username;
-  const avatarType = (me?.avatar ?? avatar)?.toLowerCase?.() ?? "male";
+  const avatarType = (me?.avatar ?? avatar)?.toLowerCase?.() ?? null;
   const hairCol = me?.hairColor ?? hairColor;
   const topCol = me?.topColor ?? topColor;
   const bottomCol = me?.bottomColor ?? bottomColor;
   const hasServerChars = Array.isArray(characters) && characters.length > 0;
+  const _isGendered = (g) => g === "male" || g === "female";
+  const _isRenderable = (c) => _isGendered(c?.avatar?.toLowerCase?.()) && c?.name && c.name !== "Player";
   const remotes = useMemo(
-    () => (Array.isArray(characters) ? characters.filter((c) => !belongsToSelf(c)) : []),
+    () =>
+      Array.isArray(characters)
+        ? characters.filter((c) => !belongsToSelf(c) && _isRenderable(c))
+        : [],
     [characters, belongsToSelf]
   );
 
@@ -268,6 +273,11 @@ export const Experience = ({
     if (nextAnim !== anim) setAnim(nextAnim);
   });
 
+  // Local render gate: require gender picked AND non-placeholder name
+  const canRenderLocal =
+    _isGendered(avatarType) &&
+    ((me?.name && me.name !== "Player") || (displayName && displayName !== "Player"));
+
   return (
     <>
       {/* Lighting */}
@@ -307,62 +317,38 @@ export const Experience = ({
         );
       })}
 
-      {/* 2) Render exactly one local avatar: server copy if known; else fallback. */}
-      {me
-        ? ((me.avatar?.toLowerCase?.() ?? "male") === "male" ? (
-            <BusinessMan
-              key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
-              ref={avatarRef}
-              id={me.id}
-              username={me.name || displayName}
-              isLocal
-              anim={anim}
-              moveSpeed={vel.current.length()}
-              hairColor={me.hairColor ?? hairCol}
-              topColor={me.topColor ?? topCol}
-              bottomColor={me.bottomColor ?? bottomCol}
-            />
-          ) : (
-            <AnimatedWoman
-              key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
-              ref={avatarRef}
-              id={me.id}
-              username={me.name || displayName}
-              isLocal
-              anim={anim}
-              moveSpeed={vel.current.length()}
-              hairColor={me.hairColor ?? hairCol}
-              topColor={me.topColor ?? topCol}
-              bottomColor={me.bottomColor ?? bottomCol}
-            />
-          ))
-        : (!hasServerChars ? (avatarType === "male" ? (
-            <BusinessMan
-              key={`${extractId(user) || "local"}:${displayName}`}
-              ref={avatarRef}
-              id={extractId(user) || "local"}
-              username={displayName}
-              isLocal
-              anim={anim}
-              moveSpeed={vel.current.length()}
-              hairColor={hairCol}
-              topColor={topCol}
-              bottomColor={bottomColor}
-            />
-          ) : (
-            <AnimatedWoman
-              key={`${extractId(user) || "local"}:${displayName}`}
-              ref={avatarRef}
-              id={extractId(user) || "local"}
-              username={displayName}
-              isLocal
-              anim={anim}
-              moveSpeed={vel.current.length()}
-              hairColor={hairCol}
-              topColor={topCol}
-              bottomColor={bottomColor}
-            />
-          )) : null)}
+       {/* 2) Render exactly one local avatar ONLY when user is ready */}
+      {canRenderLocal && (
+        me
+          ? (avatarType === "male" ? (
+              <BusinessMan
+                key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
+                ref={avatarRef}
+                id={me.id}
+               username={me.name || displayName}
+                isLocal
+                anim={anim}
+                moveSpeed={vel.current.length()}
+                hairColor={me.hairColor ?? hairCol}
+                topColor={me.topColor ?? topCol}
+                bottomColor={me.bottomColor ?? bottomCol}
+              />
+            ) : (
+              <AnimatedWoman
+                key={(me.id ?? me.socketId ?? me.userId ?? me.name) + ":local"}
+                ref={avatarRef}
+                id={me.id}
+                username={me.name || displayName}
+                isLocal
+                anim={anim}
+                moveSpeed={vel.current.length()}
+                hairColor={me.hairColor ?? hairCol}
+                topColor={me.topColor ?? topCol}
+                bottomColor={me.bottomColor ?? bottomCol}
+              />
+            ))
+          : null
+      )}
     </>
   );
 };

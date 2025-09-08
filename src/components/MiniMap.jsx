@@ -76,11 +76,22 @@ const Grid = ({ w = 1920, h = 1080 }) => {
   );
 };
 
+// Hide placeholder entries like "Player", "Player (You)", "You (You)"
+const isPlaceholderLabel = (label) => {
+    if (!label) return true;
+    const l = String(label).trim().toLowerCase();
+    return l === "player" || l === "player (you)" || l === "you (you)" || l.startsWith("player ");
+};
+const filteredMarkers = useMemo(
+    () => (Array.isArray(markers) ? markers.filter((m) => !isPlaceholderLabel(m.label)) : []),
+    [markers]
+);
+
 // Marker renderer reused by compact and expanded views
-const MarkerLayer = ({ w, h, size = 6, fontSize = 10 }) => {
+const MarkerLayer = ({ w, h, size = 6, fontSize = 10, data = [] }) => {
     return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        {markers.map((m, i) => {
+        {data.map((m, i) => {
         const left = (Math.min(Math.max(m.x, 0), 100) / 100) * w;
         const top = (Math.min(Math.max(m.y, 0), 100) / 100) * h;
         const color = m.color || "#1f2937";
@@ -354,7 +365,13 @@ return (
             ) : (
                 <Grid w={1920} h={1080} />
             )}
-            <MarkerLayer w={1920} h={1080} size={sizeBefore} fontSize={fontBefore} />
+            <MarkerLayer
+                w={1920}
+                h={1080}
+                size={sizeBefore}
+                fontSize={fontBefore}
+                data={filteredMarkers}
+            />
             <WaypointLayer
                 w={1920}
                 h={1080}
@@ -394,7 +411,13 @@ return (
                     ) : (
                         <Grid w={1920} h={1080} />
                     )}
-                    <MarkerLayer w={1920} h={1080} size={12} fontSize={14} />
+                     <MarkerLayer
+                        w={1920}
+                        h={1080}
+                        size={12}
+                        fontSize={14}
+                        data={filteredMarkers}
+                    />
                     <WaypointLayer
                         w={1920}
                         h={1080}
