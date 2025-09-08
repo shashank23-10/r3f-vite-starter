@@ -35,7 +35,7 @@ function App() {
     
     const WAYPOINTS_WORLD = [
       { id: "A", label: "Waypoint A", wx: -18, wz:  12 },
-      { id: "B", label: "Waypoint B", wx:  -5, wz:  20 },
+      { id: "B", label: "Waypoint B", wx:  -5, wz:  16 },
       { id: "C", label: "Waypoint C", wx:   8, wz:   6 },
       { id: "D", label: "Waypoint D", wx:  15, wz: -10 },
       { id: "E", label: "Waypoint E", wx: -12, wz: -18 },
