@@ -99,6 +99,34 @@ export const Experience = ({
   const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1); // model's local forward
   const AUTO_STOP_DIST = 0.25; // + how close before stopping (meters)
 
+  // --- Simple collision tunables ---
+  const COLLISION_RADIUS = 0.35;   // ~half shoulder width in meters
+  const EYE_HEIGHT = 0.9;          // ray origin height (meters)
+  const BLOCK_MARGIN = 0.15;       // extra distance to start blocking before contact
+
+  // --- Collision data ---
+  const collidersRef = useRef([]);
+  const raycasterRef = useRef(new THREE.Raycaster());
+
+  // Build a list of collidable meshes (world height > 0.5 m) once the scene is ready
+  useEffect(() => {
+    if (!scene) return;
+    const colliders = [];
+    scene.updateMatrixWorld(true);
+    scene.traverse((obj) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      obj.geometry.computeBoundingBox?.();
+      const bb = obj.geometry.boundingBox?.clone();
+      if (!bb) return;
+      bb.applyMatrix4(obj.matrixWorld);
+      const size = new THREE.Vector3();
+      bb.getSize(size);
+      if (size.y > 0.5) colliders.push(obj); // ignore floor/low props
+    });
+    collidersRef.current = colliders;
+  }, [scene]);
+
+
 
   useEffect(() => {
     const down = (e) => {
@@ -244,8 +272,31 @@ export const Experience = ({
     // Apply motion
     const step = vel.current.clone().multiplyScalar(delta);
     if (step.lengthSq() > 0) {
-      avatarRef.current.position.add(step);
-      avatarRef.current.position.y = 0; // stay grounded
+      // --- Collision check: cast 3 rays (center/left/right) ahead up to step+margin ---
+      const dirNorm = step.clone().normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      const side = new THREE.Vector3().crossVectors(dirNorm, up).normalize();
+      const baseOrigin = avatarRef.current.position.clone().add(new THREE.Vector3(0, EYE_HEIGHT, 0));
+      const origins = [
+        baseOrigin,                                         // center
+        baseOrigin.clone().add(side.clone().multiplyScalar(COLLISION_RADIUS)),  // right shoulder
+        baseOrigin.clone().add(side.clone().multiplyScalar(-COLLISION_RADIUS)), // left shoulder
+      ];
+      const rc = raycasterRef.current;
+      let blocked = false;
+      const maxDist = step.length() + BLOCK_MARGIN;
+      for (let i = 0; i < origins.length && !blocked; i++) {
+        rc.set(origins[i], dirNorm);
+        rc.near = 0;
+        rc.far = maxDist;
+        const hits = rc.intersectObjects(collidersRef.current, false);
+        if (hits.length > 0) blocked = true;
+      }
+      // If not blocked, advance; otherwise keep walking in place
+      if (!blocked) {
+        avatarRef.current.position.add(step);
+        avatarRef.current.position.y = 0; // stay grounded
+      }
     }
 
     if (isFPP) {
