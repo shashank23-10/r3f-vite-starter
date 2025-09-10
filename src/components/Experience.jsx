@@ -7,7 +7,6 @@ import { charactersAtom, userAtom, socket } from "./SocketManager";
 import { BusinessMan } from "./BusinessMan";
 import { AnimatedWoman } from "./AnimatedWoman";
 
-// Human-like locomotion: acceleration/deceleration + turn smoothing.
 // WASD to move; hold Shift to run. Click canvas to enable mouse-look.
 export const Experience = ({
   avatar = null,

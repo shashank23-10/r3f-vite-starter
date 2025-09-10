@@ -26,7 +26,6 @@ function App() {
   };
 
   const markers = (() => {
-    // Matches your floor plane 50×50 centered at (0,0)
     const X_MIN = -25, X_MAX = 25;
     const Z_MIN = -25, Z_MAX = 25;
     const toPercent = (v, min, max) => {
@@ -42,8 +41,7 @@ function App() {
       { id: "D", label: "Waypoint D", wx:  15, wz: -10 },
       { id: "E", label: "Waypoint E", wx: -12, wz: -18 },
     ];
-
-    // Convert world → minimap percentages (0..100)
+    
     const waypointsForMini = WAYPOINTS_WORLD.map((wp) => {
       const xPct = toPercent(wp.wx, X_MIN, X_MAX);
       const yPct = 100 - toPercent(wp.wz, Z_MIN, Z_MAX); // invert so +Z is up

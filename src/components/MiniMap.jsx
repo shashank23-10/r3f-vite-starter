@@ -6,8 +6,8 @@ import CloseIcon from "@mui/icons-material/Close";
 export function MiniMap({
     src,
     markers = [],
-    waypoints = [],              // + clickable waypoints (with world coords)
-    onWaypointClick,            // + callback when a waypoint is clicked
+    waypoints = [],              // clickable waypoints (with world coords)
+    onWaypointClick,            // callback when a waypoint is clicked
     onOpen,
     onClose,
     title = "MiniMap",
@@ -52,31 +52,31 @@ useEffect(() => {
 // Basic grid pattern for fallback SVG background (supports 1920x1080)
 const Grid = ({ w = 1920, h = 1080 }) => {
   const step = 40; // grid every ~40px at full res
-  const vLines = useMemo(() => {
-    const arr = [];
-    for (let x = step; x < w; x += step) arr.push(x);
-    return arr;
-  }, [w]);
-  const hLines = useMemo(() => {
-    const arr = [];
-    for (let y = step; y < h; y += step) arr.push(y);
-    return arr;
-  }, [h]);
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-      <rect x="0" y="0" width={w} height={h} fill="#fafafa" />
-      {vLines.map((x) => (
-        <line key={`v${x}`} x1={x} y1="0" x2={x} y2={h} stroke="#e5e5e5" strokeWidth="1" />
-      ))}
-      {hLines.map((y) => (
-        <line key={`h${y}`} x1="0" y1={y} x2={w} y2={y} stroke="#e5e5e5" strokeWidth="1" />
-      ))}
-      <rect x="0.5" y="0.5" width={w - 1} height={h - 1} fill="none" stroke="#d4d4d4" />
-    </svg>
-  );
+    const vLines = useMemo(() => {
+        const arr = [];
+        for (let x = step; x < w; x += step) arr.push(x);
+        return arr;
+    }, [w]);
+    const hLines = useMemo(() => {
+        const arr = [];
+        for (let y = step; y < h; y += step) arr.push(y);
+        return arr;
+    }, [h]);
+    return (
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <rect x="0" y="0" width={w} height={h} fill="#fafafa" />
+        {vLines.map((x) => (
+            <line key={`v${x}`} x1={x} y1="0" x2={x} y2={h} stroke="#e5e5e5" strokeWidth="1" />
+        ))}
+        {hLines.map((y) => (
+            <line key={`h${y}`} x1="0" y1={y} x2={w} y2={y} stroke="#e5e5e5" strokeWidth="1" />
+        ))}
+        <rect x="0.5" y="0.5" width={w - 1} height={h - 1} fill="none" stroke="#d4d4d4" />
+        </svg>
+    );
 };
 
-// Hide placeholder entries like "Player", "Player (You)", "You (You)"
+
 const isPlaceholderLabel = (label) => {
     if (!label) return true;
     const l = String(label).trim().toLowerCase();
@@ -411,7 +411,7 @@ return (
                     ) : (
                         <Grid w={1920} h={1080} />
                     )}
-                     <MarkerLayer
+                        <MarkerLayer
                         w={1920}
                         h={1080}
                         size={12}
